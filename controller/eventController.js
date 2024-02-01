@@ -3,17 +3,62 @@ const Ticket = require("../model/ticket-model");
 
 exports.getAllEvents = async (req, res) => {
   const userId = req.user.userId;
+
   try {
-  
-    const events = await Event.find({ isDeleted: false })
-      .populate("organizer", "username")
-      .populate("comments");
+    const events = await Event.aggregate([
+      {
+        $lookup: {
+          from: "users", 
+          localField: "organizer",
+          foreignField: "_id",
+          as: "organizerDetails",
+        },
+      },
+      {
+        $unwind: "$organizerDetails",
+      },
+      {
+        $group: {
+          _id: "$organizerDetails._id", 
+          organizerId: { $first: "$organizerDetails._id" },
+          organizerUsername: { $first: "$organizerDetails.username" },
+          events: {
+            $push: {
+              _id: "$_id",
+              title: "$title",
+              description: "$description",
+              date: "$date",
+              time: "$time",
+              location: "$location",
+              organizer: "$organizer",
+              comments: "$comments",
+              tickets: "$tickets",
+              isDeleted: "$isDeleted",
+              __v: "$__v",
+            },
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          organizerId: 1,
+          organizerUsername: 1,
+          events: 1,
+        },
+      },
+    ]);
+
     res.status(200).json(events);
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
+
+
+
+
 
 exports.getEventById = async (req, res) => {
   const eventId = req.params.eventId;

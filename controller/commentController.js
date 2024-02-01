@@ -25,7 +25,7 @@ exports.leaveComment = async (req, res) => {
       event: eventId,
       comment: comment,
     });
-      console.log("asdjio",event)
+      
     event.comments.push(newComment._id);
     await event.save();
 
@@ -35,3 +35,43 @@ exports.leaveComment = async (req, res) => {
     res.status(500).json({ message: 'Internal Server Error' });
   }
 };
+
+exports.getAllComments = async (req, res) => {
+  try {
+    const comments = await Comment.aggregate([
+        {
+            $group: {
+                _id: "$user",
+                user: { $first: "$user" },
+                comments: { $push: "$comment" },
+            },
+        },
+        {
+            $lookup: {
+                from: "users",
+                localField: "_id",
+                foreignField: "_id",
+                as: "organizerDetails",
+            },
+        },
+        {
+            $unwind: "$organizerDetails",
+        },
+        {
+            $project: {
+                organizerId: "$_id",
+                organizerUsername: "$organizerDetails.username",
+                comments: 1,
+                _id: 0, 
+            },
+        },
+    ]);
+
+    res.status(200).json(comments);
+}catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+
