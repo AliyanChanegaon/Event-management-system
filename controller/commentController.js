@@ -1,13 +1,37 @@
+const Comment = require('../model/comment-model');
+const User = require('../model/user-model');
+const Event = require('../model/event-model');
+exports.leaveComment = async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    const { comment } = req.body;
 
-const comments = [
-    { id: 1, event_id: 1, user_id: 1, comment: 'Great event!' },
-    { id: 2, event_id: 2, user_id: 2, comment: 'Looking forward to it!' },
-  ];
-  
+   
+    const userId = req.user.userId;
 
-  exports.leaveComment = (req, res) => {
-    const eventId = parseInt(req.params.eventId);
+   
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
 
-    res.status(201).json({ message: 'Comment added successfully.' });
-  };
-  
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({ message: 'Event not found' });
+    }
+
+    const newComment = await Comment.create({
+      user: userId,
+      event: eventId,
+      comment: comment,
+    });
+      console.log("asdjio",event)
+    event.comments.push(newComment._id);
+    await event.save();
+
+    res.status(201).json({ message: 'Comment created successfully', comment: newComment });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Internal Server Error' });
+  }
+};

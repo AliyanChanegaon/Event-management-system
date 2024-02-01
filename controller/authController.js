@@ -38,13 +38,13 @@ exports.login = async (req, res) => {
       return res.status(401).json({ message: "Invalid credentials." });
     }
 
-    const accessToken = jwt.sign({ userId: user._id }, "your_secret_key", {
+    const accessToken = jwt.sign({ userId: user._id },process.env.SECRET_KEY, {
       expiresIn: "7d",
     });
 
     const refreshToken = jwt.sign(
       { userId: user._id },
-      "your_refresh_secret_key",
+      process.env.SECRET_KEY,
       { expiresIn: "30d" }
     );
 

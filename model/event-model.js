@@ -8,6 +8,8 @@ const eventSchema = new Schema({
   time: { type: String, required: true },
   location: { type: String, required: true },
   organizer: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  comments : [{ type: mongoose.Schema.Types.ObjectId, ref: 'Comment', required: false }],
+  tickets : [{ type: mongoose.Schema.Types.ObjectId, ref: 'Ticket', required: true }],
   isDeleted: { type: Boolean, default: false },
 });
 
