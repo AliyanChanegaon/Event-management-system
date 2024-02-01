@@ -1,15 +1,12 @@
-const Ticket = require('../model/ticket-model');
-
+const Ticket = require("../model/ticket-model");
+const Event = require("../model/event-model");
 
 exports.getAllTickets = async (req, res) => {
- 
-
   try {
     const tickets = await Ticket.aggregate([
-    
       {
         $lookup: {
-          from: "events", 
+          from: "events",
           localField: "event",
           foreignField: "_id",
           as: "eventDetails",
@@ -19,27 +16,17 @@ exports.getAllTickets = async (req, res) => {
         $unwind: "$eventDetails",
       },
       {
-        $lookup: {
-          from: "users", 
-          localField: "eventDetails.organizer",
-          foreignField: "_id",
-          as: "organizerDetails",
-        },
-      },
-      {
-        $unwind: "$organizerDetails",
-      },
-      {
         $group: {
-          _id: "$organizerDetails._id",
-          organizerDetails: { $first: "$organizerDetails" },
+          _id: "$eventDetails._id",
+          eventId: { $first: "$eventDetails._id" },
+          eventName: { $first: "$eventDetails.title" },
           tickets: {
             $push: {
-              eventId: "$eventDetails._id",
-              eventName: "$eventDetails.title",
-              eventType: "$ticketType",
+              ticketId: "$_id",
+              ticketType: "$ticketType",
               price: "$price",
               quantity: "$quantity",
+              __v: "$__v",
             },
           },
         },
@@ -47,8 +34,8 @@ exports.getAllTickets = async (req, res) => {
       {
         $project: {
           _id: 0,
-          organizerId: "$organizerDetails._id",
-          organizerUsername: "$organizerDetails.username",
+          eventId: 1,
+          eventName: 1,
           tickets: 1,
         },
       },
@@ -57,29 +44,57 @@ exports.getAllTickets = async (req, res) => {
     res.status(200).json(tickets);
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Internal Server Error' });
+    res.status(500).json({ message: "Internal Server Error" });
   }
 };
 
-
-
-
 exports.purchaseTicket = async (req, res) => {
-  const eventId = req.params.eventId;
-  const userId = req.user.userId; 
-  const {  price, quantity } = req.body;
-
   try {
-    const newTicket = await Ticket.create({
+    const { eventId } = req.params;
+    const { ticketType, quantity } = req.body;
+    const userId = req.user._id;
+
+    const validationChecks = [
+      { condition: !ticketType, message: "Ticket type is required." },
+      {
+        condition: !quantity || quantity <= 0,
+        message: !quantity
+          ? "Quantity type is required."
+          : "Quantity must be a positive integer.",
+      },
+    ];
+
+    for (const check of validationChecks) {
+      if (check.condition) {
+        return res.status(400).json({ message: check.message });
+      }
+    }
+
+    const availableTickets = await Ticket.find({
       event: eventId,
-      user: userId,
-      price,
-      quantity,
+      ticketType: ticketType,
     });
 
-    res.status(201).json({ message: 'Tickets purchased successfully.', ticket: newTicket });
+    if (!availableTickets.length) {
+      return res.status(400).json({ message: "No available tickets." });
+    }
+
+    if (availableTickets[0].quantity < quantity) {
+      return res.status(400).json({ message: "Not enough tickets available." });
+    }
+
+    const purchasedTickets = availableTickets.slice(0, quantity);
+    await Promise.all(
+      purchasedTickets.map((ticket) => {
+        ticket.user = userId;
+        ticket.quantity -= quantity;
+        return ticket.save();
+      })
+    );
+
+    res.status(200).json({ message: "Purchase successful", purchasedTickets });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Internal Server Error' });
+    res.status(500).json({ message: "Internal Server Error" });
   }
 };

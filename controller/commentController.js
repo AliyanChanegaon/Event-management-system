@@ -38,34 +38,67 @@ exports.leaveComment = async (req, res) => {
 
 exports.getAllComments = async (req, res) => {
   try {
+    // const comments = await Comment.aggregate([
+     
+    //   {
+    //     $group: {
+    //       _id: "$user",
+    //       user: { $first: "$user" },
+    //       organizerId: { $first: "$_id" },
+    //       organizerUsername: { $first: "$userDetails.username" },
+    //       comments: { $push: "$comment" },
+    //     },
+    //   },
+    //   {
+    //     $project: {
+    //       organizerId: 1,
+    //       organizerUsername:1,
+    //       comments: 1,
+    //       _id: 0,
+    //     },
+    //   },
+    // ]);
     const comments = await Comment.aggregate([
-        {
-            $group: {
-                _id: "$user",
-                user: { $first: "$user" },
-                comments: { $push: "$comment" },
+      {
+        $lookup: {
+          from: "events", // Replace with the actual name of the Event collection
+          localField: "event",
+          foreignField: "_id",
+          as: "eventDetails",
+        },
+      },
+      {
+        $unwind: "$eventDetails",
+      },
+      {
+        $lookup: {
+          from: "users", // Replace with the actual name of the User collection
+          localField: "user",
+          foreignField: "_id",
+          as: "userDetails",
+        },
+      },
+      {
+        $unwind: "$userDetails",
+      },
+      {
+        $group: {
+          _id: "$eventDetails._id",
+          eventId: { $first: "$eventDetails._id" },
+          eventName: { $first: "$eventDetails.title" },
+          comments: {
+            $push: {
+              userID: "$userDetails._id",
+              username: "$userDetails.username",
+              commentId: "$_id",
+              commentMessage: "$comment",
             },
+          },
         },
-        {
-            $lookup: {
-                from: "users",
-                localField: "_id",
-                foreignField: "_id",
-                as: "organizerDetails",
-            },
-        },
-        {
-            $unwind: "$organizerDetails",
-        },
-        {
-            $project: {
-                organizerId: "$_id",
-                organizerUsername: "$organizerDetails.username",
-                comments: 1,
-                _id: 0, 
-            },
-        },
+      },
     ]);
+    
+   
 
     res.status(200).json(comments);
 }catch (error) {
