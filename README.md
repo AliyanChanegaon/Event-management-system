@@ -84,4 +84,4 @@ Appropriate indexing is applied to database tables, and caching is implemented w
 The source code of the application is available on [GitHub](https://github.com/AliyanChanegaon/Event-management-system).
 
 
-Feel free to explore the codebase, contribute, and use this Event Management System as a foundation for your projects! If you have any questions or issues, please open a new [GitHub issue](https://github.com/yourusername/event-management-system/issues). Happy coding!
+Feel free to explore the codebase, contribute, and use this Event Management System as a foundation for your projects! If you have any questions or issues, please open a new [GitHub issue](https://github.com/AliyanChanegaon/Event-management-system/issues).
