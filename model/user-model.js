@@ -20,7 +20,7 @@ const userSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Ticket',
       },
-      type: String,
+      // type: String,
       price: Number,
       quantity: Number,
     }

@@ -1,5 +1,6 @@
 const Ticket = require("../model/ticket-model");
 const Event = require("../model/event-model");
+const User = require("../model/user-model");
 
 exports.getAllTickets = async (req, res) => {
   try {
@@ -26,7 +27,7 @@ exports.getAllTickets = async (req, res) => {
               ticketType: "$ticketType",
               price: "$price",
               quantity: "$quantity",
-              __v: "$__v",
+             
             },
           },
         },
@@ -48,11 +49,28 @@ exports.getAllTickets = async (req, res) => {
   }
 };
 
+exports.getTicketById = async (req, res) => {
+  const ticketId = req.params.ticketId;
+
+  try {
+    const ticket = await Ticket.findOne({ _id: ticketId });
+
+    if (ticket) {
+      res.status(200).json(ticket);
+    } else {
+      res.status(404).json({ message: "Event not found" });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
 exports.purchaseTicket = async (req, res) => {
   try {
     const { eventId } = req.params;
     const { ticketType, quantity } = req.body;
-    const userId = req.user._id;
+    const userId = req.user;
 
     const validationChecks = [
       { condition: !ticketType, message: "Ticket type is required." },
@@ -82,17 +100,42 @@ exports.purchaseTicket = async (req, res) => {
     if (availableTickets[0].quantity < quantity) {
       return res.status(400).json({ message: "Not enough tickets available." });
     }
+    const user = await User.findOne({ _id: userId });
 
     const purchasedTickets = availableTickets.slice(0, quantity);
+
     await Promise.all(
-      purchasedTickets.map((ticket) => {
+      purchasedTickets.map(async (ticket) => {
+        const existingTicketIndex = user.purchasedTickets.findIndex(
+          (purchasedTicket) =>
+            purchasedTicket.ticket_id.toString() === ticket._id.toString()
+        );
+
+        if (existingTicketIndex !== -1) {
+          const newPrice= user.purchasedTickets[existingTicketIndex].price + ticket.price * quantity ;
+          user.purchasedTickets[existingTicketIndex].quantity += quantity;
+          user.purchasedTickets[existingTicketIndex].price = newPrice;
+        } else {
+          user.purchasedTickets.push({
+            ticket_id: ticket._id,
+            type: ticketType,
+            price: ticket.price * quantity,
+            quantity: quantity,
+          });
+        }
+
+        await user.save();
+
         ticket.user = userId;
         ticket.quantity -= quantity;
-        return ticket.save();
+
+        await ticket.save();
       })
     );
 
-    res.status(200).json({ message: "Purchase successful", purchasedTickets });
+    res
+      .status(200)
+      .json({ message: "Purchase successful", purchasedTickets, user });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Internal Server Error" });

@@ -1,14 +1,24 @@
 const Event = require("../model/event-model");
 const Ticket = require("../model/ticket-model");
+const User = require("../model/user-model");
 
 exports.getAllEvents = async (req, res) => {
-  const userId = req.user.userId;
-
   try {
+    const { title, date, location } = req.query;
+
+    // Create a match object to filter events based on query parameters
+    const match = {};
+    if (title) match.title = { $regex: new RegExp(title, "i") }; // Case-insensitive title search
+    if (date) match.date = new Date(date); // Exact date match
+    if (location) match.location = { $regex: new RegExp(location, "i") }; // Case-insensitive location search
+    match.isDeleted = false;
     const events = await Event.aggregate([
       {
+        $match: match, // Apply the match filter
+      },
+      {
         $lookup: {
-          from: "users", 
+          from: "users",
           localField: "organizer",
           foreignField: "_id",
           as: "organizerDetails",
@@ -19,7 +29,7 @@ exports.getAllEvents = async (req, res) => {
       },
       {
         $group: {
-          _id: "$organizerDetails._id", 
+          _id: "$organizerDetails._id",
           organizerId: { $first: "$organizerDetails._id" },
           organizerUsername: { $first: "$organizerDetails.username" },
           events: {
@@ -33,6 +43,7 @@ exports.getAllEvents = async (req, res) => {
               organizer: "$organizer",
               comments: "$comments",
               tickets: "$tickets",
+              rating: "$rating",
               isDeleted: "$isDeleted",
               __v: "$__v",
             },
@@ -48,17 +59,16 @@ exports.getAllEvents = async (req, res) => {
         },
       },
     ]);
-
-    res.status(200).json(events);
+    if (events && events.length !== 0) {
+      res.status(200).json(events);
+    } else {
+      res.status(404).json({ message: "No Events found" });
+    }
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Internal Server Error" });
   }
 };
-
-
-
-
 
 exports.getEventById = async (req, res) => {
   const eventId = req.params.eventId;
@@ -66,8 +76,9 @@ exports.getEventById = async (req, res) => {
   try {
     const event = await Event.findOne({ _id: eventId, isDeleted: false })
       .populate("organizer", "username")
-      .populate("comments");
-    
+      .populate("comments")
+      .populate("tickets");
+
     if (event) {
       res.status(200).json(event);
     } else {
@@ -81,16 +92,29 @@ exports.getEventById = async (req, res) => {
 
 exports.createEvent = async (req, res) => {
   const eventData = req.body;
-  const userId = req.user.userId;
+  const userId = req.user;
   try {
     eventData.comments = [];
     eventData.tickets = [];
     const { generalTickets, vipTickets, frontRowTickets } = req.body;
+    if (!generalTickets || !vipTickets || !frontRowTickets) {
+      const missingTickets = [];
+      if (!generalTickets) missingTickets.push("General Admission");
+      if (!vipTickets) missingTickets.push("VIP");
+      if (!frontRowTickets) missingTickets.push("Front Row");
+
+      const errorMessage = `Missing ticket information for: ${missingTickets.join(
+        ", "
+      )}`;
+      return res.status(400).json({ message: errorMessage });
+    }
 
     const newEvent = await Event.create({
       ...eventData,
       organizer: userId,
-      tickets: [], // Initialize with an empty array
+      rating: [],
+      tickets: [],
+      isDeleted: false,
     });
 
     const tickets = [];
@@ -99,9 +123,9 @@ exports.createEvent = async (req, res) => {
       tickets.push({
         ticketType: "General Admission",
         user: userId,
-        price: generalTickets.price || 20,
+        price: generalTickets.price,
         quantity: generalTickets.quantity,
-        event: newEvent._id, // Associate the event ID with the ticket
+        event: newEvent._id,
       });
     }
 
@@ -109,7 +133,7 @@ exports.createEvent = async (req, res) => {
       tickets.push({
         ticketType: "VIP",
         user: userId,
-        price: vipTickets.price || 50,
+        price: vipTickets.price,
         quantity: vipTickets.quantity,
         event: newEvent._id,
       });
@@ -119,7 +143,7 @@ exports.createEvent = async (req, res) => {
       tickets.push({
         ticketType: "Front Row",
         user: userId,
-        price: frontRowTickets.price || 100,
+        price: frontRowTickets.price,
         quantity: frontRowTickets.quantity,
         event: newEvent._id,
       });
@@ -131,10 +155,76 @@ exports.createEvent = async (req, res) => {
 
     newEvent.tickets = ticketIds;
     await newEvent.save();
+    await User.findByIdAndUpdate(userId, { $push: { events: newEvent._id } });
 
     res
       .status(201)
       .json({ message: "Event created successfully.", event: newEvent });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+exports.rateEvent = async (req, res) => {
+  const eventId = req.params.eventId;
+  const userId = req.user; // Assuming you have the user information in req.user
+
+  try {
+    // Check if the user has purchased a ticket for the event
+    const oldEvent = await Event.findById(eventId);
+    const user = await User.findOne({
+      _id: userId,
+      "purchasedTickets.ticket_id": { $in: oldEvent.tickets }, // Check if any purchased ticket ID matches an event ticket ID
+    });
+
+    if (!user) {
+      return res
+        .status(403)
+        .json({ message: "You need to buy a ticket to rate this event." });
+    }
+
+    const { rating } = req.body;
+
+    // Validate the rating (you may want to add additional validation logic)
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return res
+        .status(400)
+        .json({
+          message: "Invalid rating. Please provide a rating between 1 and 5.",
+        });
+    }
+
+    // Fetch the event based on eventId
+    const event = await Event.findById(eventId);
+
+    // Find the user's existing rating for the event
+    const userRating = event.ratings.find((ratingObj) =>
+      ratingObj.user.equals(userId)
+    );
+
+    if (userRating) {
+      // Update the existing rating if the user has already rated the event
+      userRating.rating = rating;
+    } else {
+      // Add a new rating if the user hasn't rated the event yet
+      event.ratings.push({ user: userId, rating });
+    }
+
+    // Calculate the average rating for the event
+    const totalRatings = event.ratings.reduce(
+      (sum, ratingObj) => sum + ratingObj.rating,
+      0
+    );
+    const averageRating = totalRatings / event.ratings.length;
+
+    // Update the event with the calculated average rating
+    event.rating = averageRating;
+    await event.save();
+
+    res
+      .status(200)
+      .json({ message: "Event rated successfully.", averageRating });
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: "Internal Server Error" });
