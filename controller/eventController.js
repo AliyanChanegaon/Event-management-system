@@ -44,7 +44,7 @@ exports.getAllEvents = async (req, res) => {
               tickets: "$tickets",
               rating: "$rating",
               isDeleted: "$isDeleted",
-              __v: "$__v",
+              
             },
           },
         },
