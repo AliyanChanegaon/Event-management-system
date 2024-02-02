@@ -6,15 +6,14 @@ exports.getAllEvents = async (req, res) => {
   try {
     const { title, date, location } = req.query;
 
-    // Create a match object to filter events based on query parameters
     const match = {};
-    if (title) match.title = { $regex: new RegExp(title, "i") }; // Case-insensitive title search
-    if (date) match.date = new Date(date); // Exact date match
-    if (location) match.location = { $regex: new RegExp(location, "i") }; // Case-insensitive location search
+    if (title) match.title = { $regex: new RegExp(title, "i") };
+    if (date) match.date = new Date(date);
+    if (location) match.location = { $regex: new RegExp(location, "i") };
     match.isDeleted = false;
     const events = await Event.aggregate([
       {
-        $match: match, // Apply the match filter
+        $match: match,
       },
       {
         $lookup: {
@@ -168,14 +167,13 @@ exports.createEvent = async (req, res) => {
 
 exports.rateEvent = async (req, res) => {
   const eventId = req.params.eventId;
-  const userId = req.user; // Assuming you have the user information in req.user
+  const userId = req.user;
 
   try {
-    // Check if the user has purchased a ticket for the event
     const oldEvent = await Event.findById(eventId);
     const user = await User.findOne({
       _id: userId,
-      "purchasedTickets.ticket_id": { $in: oldEvent.tickets }, // Check if any purchased ticket ID matches an event ticket ID
+      "purchasedTickets.ticket_id": { $in: oldEvent.tickets },
     });
 
     if (!user) {
@@ -186,39 +184,34 @@ exports.rateEvent = async (req, res) => {
 
     const { rating } = req.body;
 
-    // Validate the rating (you may want to add additional validation logic)
-    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-      return res
-        .status(400)
-        .json({
-          message: "Invalid rating. Please provide a rating between 1 and 5.",
-        });
+    if (!rating) {
+      return res.status(400).json({ message: "Rating is required" });
     }
 
-    // Fetch the event based on eventId
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({
+        message: "Invalid rating. Please provide a rating between 1 and 5.",
+      });
+    }
+
     const event = await Event.findById(eventId);
 
-    // Find the user's existing rating for the event
     const userRating = event.ratings.find((ratingObj) =>
       ratingObj.user.equals(userId)
     );
 
     if (userRating) {
-      // Update the existing rating if the user has already rated the event
       userRating.rating = rating;
     } else {
-      // Add a new rating if the user hasn't rated the event yet
       event.ratings.push({ user: userId, rating });
     }
 
-    // Calculate the average rating for the event
     const totalRatings = event.ratings.reduce(
       (sum, ratingObj) => sum + ratingObj.rating,
       0
     );
     const averageRating = totalRatings / event.ratings.length;
 
-    // Update the event with the calculated average rating
     event.rating = averageRating;
     await event.save();
 
@@ -236,10 +229,30 @@ exports.updateEvent = async (req, res) => {
   const eventData = req.body;
 
   try {
-    await Event.updateOne(
+    const disallowedFields = ["_id", "organizer", "ratings", "tickets"];
+
+    const disallowedFieldsPresent = disallowedFields.filter(
+      (field) => eventData[field]
+    );
+
+    if (disallowedFieldsPresent.length > 0) {
+      const errorMessage = `Cannot update ${disallowedFieldsPresent.join(
+        ", "
+      )}.`;
+      return res.status(400).json({ message: errorMessage });
+    }
+
+    const result = await Event.updateOne(
       { _id: eventId, isDeleted: false },
       { $set: eventData }
     );
+
+    if (result.nModified === 0) {
+      return res
+        .status(404)
+        .json({ message: "Event not found or already deleted." });
+    }
+
     res.status(200).json({ message: `Event ${eventId} updated successfully.` });
   } catch (error) {
     console.error(error);

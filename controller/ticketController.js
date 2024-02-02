@@ -1,8 +1,7 @@
 const Ticket = require("../model/ticket-model");
-const Event = require("../model/event-model");
 const User = require("../model/user-model");
 
-exports.getAllTickets = async (req, res) => {
+exports.getAllTickets = async (_, res) => {
   try {
     const tickets = await Ticket.aggregate([
       {
