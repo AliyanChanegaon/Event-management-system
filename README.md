@@ -1,6 +1,6 @@
 # Event Management System
 
-Welcome to the Event Management System repository! This project aims to provide a robust backend for managing events, tickets, users, and comments. It is built using Node.js, Express, Sequelize, and either MySQL or MongoDB. Below, you'll find information on the project structure, features, API endpoints, and how to get started.
+Welcome to the Event Management System repository! This project aims to provide a robust backend for managing events, tickets, users, and comments. It is built using Node.js, Express, MongoDB. Below, you'll find information on the project structure, features, API endpoints, and how to get started.
 
 ## Table of Contents
 
